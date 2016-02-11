@@ -1,17 +1,15 @@
 char karakter;
-String cmd = "";
+String cmd;
 
 int sirine = 8;
 int led = 13;
 int lamp_teras = 9;
 int keamanan = 0;
-int autolampteras = 0;
 int valsensorpintu;
-int dark = 25;
-int valldr; // nilai sensor ldr
-int vallamp = 5; // intensitas cahaya lampu
-int minldr = dark + 1; // intensitas minimum
-int maxldr = vallamp +1; //intensitas maximum
+int setjam = 0;
+int setlampu = 0;
+
+long int petang, subuh, pagi, pukul, jam, menit, detik, jam2, menit2, detik2;
 
 void setup()
 {
@@ -27,28 +25,32 @@ void setup()
 
 void loop()
 { 
+  delay(1000);
+  
+  while((setjam==0)||(setlampu==0))
+  {
+    if(Serial.available())
+    {
+      cekcmd();
+    }
+  }
+  
   valsensorpintu = digitalRead(2);
-  if(valsensorpintu==HIGH)
-  {
-    valsensorpintu = 0;
-  }
-  else
-  {
-    valsensorpintu = 1;
-  }
   
-  readldr();
+  run_jam();
+  cek_jam();
+  cek_secure();
   
-  cekcmd();
-  ceksecure();
-  cekldr();
+  while (Serial.available())
+  {
+    cekcmd();
+  }
   
 }
 
 void cekcmd()
 {
-  if(Serial.available())
-  {
+  
     karakter = (char)Serial.read();
     if(karakter != '\n')
     {
@@ -60,105 +62,150 @@ void cekcmd()
       {
         if(keamanan == 0)
         {
-          if(valsensorpintu==1)
+          if(valsensorpintu==LOW)
           {
             keamanan = 0;
-            Serial.println("Maaf Pintu/jendela terbuka!");
+            Serial.println("jendela terbuka!");
             delay(500);
-            Serial.print("periksa/tutup sebelum ");
+            Serial.println("tutup dulu! ");
             delay(500);
-            Serial.println("mengaktifkan sistem keamanan");
-            delay(500);
+            run_jam();
+            //cek_jam();
+            //cek_secure();
           }
           else
           {
             keamanan = 1;
+            digitalWrite(led, HIGH);
             Serial.println("Sistem Keamanan ON");
-            delay(500);
+            delay(1000);
+            run_jam();
+            //cek_jam();
+            //cek_secure();
           }
         }
         else
         {
           keamanan = 0;
-          konfirm();
+          digitalWrite(led, LOW);
           Serial.println("Sistem Keamanan OFF");
-          delay(500);
+          delay(1000);
+          run_jam();
+          //cek_jam();
+          //cek_secure();
         }
         cmd="";
       }
-      else if(cmd=="b")
+      else if(cmd.startsWith("jam"))
       {
-        if(autolampteras==0)
-        {
-          autolampteras = 1;
-          //kalibrasildr();
-          Serial.println("Otomatis Lampu teras ON");
-          delay(500);
-        }
-        else
-        {
-          autolampteras = 0;
-          digitalWrite(lamp_teras, HIGH); //lampu mati
-          Serial.println("Otomatis Lampu teras OFF");
-          delay(500);
-        }
+
+        jam = cmd.substring(4,6).toInt();
+        menit = cmd.substring(7).toInt();;
+        detik = 0;
+        pukul = second(jam,menit,detik);
+        Serial.print("jam ");
+        Serial.print(jam);
+        Serial.print(":");
+        Serial.print(menit);
+        Serial.print(":");
+        Serial.println(detik);
+        delay(1000);
+        setjam = 1;
+        run_jam();
+        //cek_jam();
+        //cek_secure();
         cmd="";
+        
+      }
+      else if(cmd.startsWith("set"))
+      {
+
+        jam = cmd.substring(4,6).toInt();
+        menit = cmd.substring(7,9).toInt();;
+        detik = 0;
+        petang = second(jam,menit,detik);
+        
+        jam2 = cmd.substring(10,12).toInt();
+        menit2 = cmd.substring(13).toInt();;
+        detik2 = 0;
+        pagi = second(jam2,menit2,detik2);
+        subuh = pagi - second(1,15,0);
+        
+        Serial.print("set ");
+        Serial.print(jam);
+        Serial.print(":");
+        Serial.print(menit);
+        Serial.print(":");
+        Serial.print(detik);
+        Serial.print(" - ");
+        Serial.print(jam2);
+        Serial.print(":");
+        Serial.print(menit2);
+        Serial.print(":");
+        Serial.println(detik2);
+        delay(1000);
+        setlampu = 1;
+        run_jam();
+        //cek_jam();
+        //cek_secure();
+        cmd="";
+        
       }
       else if(cmd=="menu")
       {
         Serial.println("==|MENU PERINTAH|==");
-        delay(500);
+        delay(200);
         Serial.println("? : Menampilkan Status");
-        delay(500);
+        delay(200);
         Serial.println("a : Sistem Keamanan ON/OFF");
-        delay(500);
-        Serial.println("b : Otomatis Lampu teras ON/OFF");
-        delay(500);
+        delay(200);
+        Serial.println("jam: cth: jam 23.10");
+        delay(200);
+        Serial.println("setlamp:cth: set 17.30-05.00");
+        delay(200);
+        run_jam();
+        //cek_jam();
+        //cek_secure();
         cmd="";
       }
       else if(cmd=="?")
       {
         Serial.println("==|STATUS|==");
-        delay(500);
+        delay(250);
         
         Serial.print("Pintu/Jendela: ");
         if(valsensorpintu==HIGH)
         {
-           Serial.println("Terbuka");
-           delay(500);
+           Serial.println("Tertutup");
         }
         else
         {
-          Serial.println("Tertutup");
-          delay(500);
+          Serial.println("Terbuka");
         }
+        delay(250);
         
         Serial.print("Sistem Keamanan: ");
         if(keamanan==1)
         {
            Serial.println("ON");
-           delay(500);
         }
         else
         {
           Serial.println("OFF");
-          delay(500);
         }
+        delay(250);
         
-        Serial.print("Otomatis Lampu teras: ");
-        if(autolampteras == 0)
-        {
-           Serial.println("OFF");
-           delay(500);
-        }
-        else
-        {
-          Serial.println("ON");
-          delay(500);
-        }
-        Serial.print("Intensitas Cahaya: ");
-        Serial.println(valldr);
-        delay(500);
+        Serial.print("jam ");
+        Serial.print(pukul/3600);
+        Serial.print(":");
+        Serial.print((pukul%3600)/60);
+        Serial.print(":");
+        Serial.println(((pukul%3600)%60));
+        delay(250);
+        
+        run_jam();
+        //cek_jam();
+        //cek_secure();
         cmd="";
       }
       else
@@ -167,84 +214,85 @@ void cekcmd()
         delay(500);
         Serial.println("ketik 'menu' untuk melihat perintah");
         delay(500);
+        run_jam();
+        //cek_jam();
+        //cek_secure();
         cmd="";
       }
     }
-  }
+    
 }
 
-void konfirm()
+void run_jam()
 {
-  digitalWrite(sirine, LOW);// sirine hidup
-  delay(100);
-  digitalWrite(sirine, HIGH);//sirine mati
-}
-
-void ceksecure()
-{
-  if(keamanan==1)
+  if(pukul < second(23,59,59))
   {
-    digitalWrite(led, HIGH);
+    pukul++;
   }
   else
   {
-    digitalWrite(led, HIGH);
-    delay(100);
-    digitalWrite(led, LOW);
-    delay(100);
+    pukul = 0;
+  }
+}
+
+void cek_jam()
+{
+  if( (pukul >= petang) || (pukul < pagi) )
+  {
+    digitalWrite(lamp_teras,LOW);
+    //Serial.println("Lampu ON");
+  }
+  else
+  {
+    digitalWrite(lamp_teras,HIGH);
+    //Serial.println("Lampu OFF");
   }
   
-  
-  if(valsensorpintu==1 && keamanan==1)//jika (pintu/jendela) terbuka dan sistem keamanan on
+  if( (pukul == petang) || (pukul == pagi) )
   {
     digitalWrite(sirine, LOW);// sirine hidup
+    delay(100);
+    digitalWrite(sirine, HIGH);//sirine mati
+    delay(900);
+    run_jam();
+    cek_jam();
+    cek_secure();
+  }
+  
+  if(pukul == subuh)
+  {
+    keamanan = 0;
+    digitalWrite(led, LOW);
+  }
+  
+  if((pukul == second(23,59,0))&&(valsensorpintu==HIGH))
+  {
+    keamanan = 1;
+    digitalWrite(led, HIGH);
+  }
+  
+}
+
+void cek_secure()
+{ 
+  if((keamanan==1)&&(valsensorpintu==LOW))
+  {
+    digitalWrite(sirine, LOW);
+    //Serial.println("Sirine ON");
     delay(250);
-    digitalWrite(sirine, HIGH);// sirine mati
-    delay(3000);
+    digitalWrite(sirine, HIGH);
+    //Serial.println("Sirine OFF");
+    delay(750);
+    run_jam();
+    cek_jam();
   }
 }
 
-void cekldr()
+long int second( long int x, long int y, long int z)
 {
-  if(autolampteras==1){
-    if(valldr<=minldr) //jika intensitas cahaya <= intensitas minimum/batas bawah
-    {
-      digitalWrite(lamp_teras, LOW); //lampu hidup
-    }
-    else if(valldr>=maxldr)//jika intensitas cahaya >= intensitas maximum/batas atas
-    {
-      digitalWrite(lamp_teras, HIGH); //lampu mati
-    }
-  }
+  long int hasil;
+  hasil = (x*3600)+(y*60)+z;
+  return hasil;
 }
-
-/*void kalibrasildr()
-{
-  Serial.println("Mengkalibrasi...");
-  delay(500);
-  Serial.println("Tutup sensor cahaya!");
-  delay(500);
-  digitalWrite(lamp_teras, HIGH); //lampu mati
-  delay(9500);
-  readldr();
-  minldr = valldr + 10;
-  Serial.println("Buka sensor cahaya!");
-  delay(500);
-  digitalWrite(lamp_teras, LOW); //lampu Hidup
-  delay(9500);
-  readldr();
-  vallamp = valldr;
-  maxldr = minldr + vallamp + 5;
-  digitalWrite(lamp_teras, HIGH); //lampu mati
-  Serial.println("Kalibrasi selesai");
-  delay(500);
-}*/
-
-void readldr()
-{
-  valldr = map(analogRead(A0),0,1024,0,50);
-  //valldr = 1023 - valldr;
-}
-
 
 
